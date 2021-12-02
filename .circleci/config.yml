@@ -270,12 +270,15 @@ jobs:
       - run:
           name: e2e local tests
           command: |
-            set +e
+            set -eo
             cp .env.multitenancy .env
             make up
             echo "Wait 20 seconds for services to boot up correctly..."
             sleep 20
             make e2e-ci
+            exitCode=$(docker inspect project_e2e_1 --format='{{.State.ExitCode}}')
+            echo "Code: $exitCode"
+            exit $exitCode
       - store_artifacts:
           path: ./build/report/report.html
           destination: report.html
@@ -389,71 +392,72 @@ workflows:
   version: 2
   default:
     jobs:
-      - lint:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              only: /.*/
-      - gobuild:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              only: /.*/
-      - test:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              only: /.*/
-      - race:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              only: /.*/
-      - integration:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              only: /.*/
+#      - lint:
+#          filters:
+#            tags:
+#              only: /^v.*/
+#            branches:
+#              only: /.*/
+#      - gobuild:
+#          filters:
+#            tags:
+#              only: /^v.*/
+#            branches:
+#              only: /.*/
+#      - test:
+#          filters:
+#            tags:
+#              only: /^v.*/
+#            branches:
+#              only: /.*/
+#      - race:
+#          filters:
+#            tags:
+#              only: /^v.*/
+#            branches:
+#              only: /.*/
+#      - integration:
+#          filters:
+#            tags:
+#              only: /^v.*/
+#            branches:
+#              only: /.*/
       - run-e2e-local:
             filters:
               branches:
-                only: main
+#                only: main
+                only: 758-pipeline_e2e
               tags:
                 only: /^v.*/
-            requires:
-              - lint
-              - gobuild
-              - test
-              - race
-              - integration
-      - push-orchestrate-image:
-          filters:
-            branches:
-              only: main
-          requires:
-            - run-e2e-local
-      - wait-for-approval:
-          type: approval
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
-          requires:
-            - run-e2e-local
-      - release-tag:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
-          requires:
-            - wait-for-approval
+#            requires:
+#              - lint
+#              - gobuild
+#              - test
+#              - race
+#              - integration
+#      - push-orchestrate-image:
+#          filters:
+#            branches:
+#              only: main
+#          requires:
+#            - run-e2e-local
+#      - wait-for-approval:
+#          type: approval
+#          filters:
+#            tags:
+#              only: /^v.*/
+#            branches:
+#              ignore: /.*/
+#          requires:
+#            - run-e2e-local
+#      - release-tag:
+#          filters:
+#            tags:
+#              only: /^v.*/
+#            branches:
+#              ignore: /.*/
+#          requires:
+#            - wait-for-approval
 #      - push-orchestrate-e2e-image:
 #          filters:
 #            branches:
