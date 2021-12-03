@@ -9,9 +9,10 @@ import (
 	"github.com/consensys/orchestrate/pkg/toolkit/app/log"
 	"github.com/consensys/orchestrate/pkg/toolkit/workerpool"
 	"github.com/consensys/orchestrate/pkg/types/api"
-	"github.com/consensys/orchestrate/pkg/types/entities"
+	apptypes "github.com/consensys/orchestrate/pkg/types/entities"
 	"github.com/consensys/orchestrate/pkg/utils"
 	"github.com/consensys/orchestrate/pkg/utils/envelope"
+	"github.com/consensys/orchestrate/services/tx-listener/entities"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	"github.com/Shopify/sarama"
@@ -26,7 +27,6 @@ import (
 	"github.com/consensys/orchestrate/services/tx-listener/dynamic"
 	ethAbi "github.com/ethereum/go-ethereum/accounts/abi"
 	ethcommon "github.com/ethereum/go-ethereum/common"
-	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"google.golang.org/protobuf/proto"
 )
@@ -56,12 +56,12 @@ func NewHook(
 	}
 }
 
-func (hk *Hook) AfterNewBlock(ctx context.Context, c *dynamic.Chain, block *ethtypes.Block, jobs []*entities.Job) error {
-	blockLogCtx := log.WithFields(ctx, log.Field("chain", c.UUID), log.Field("block_number", block.Number().String()))
+func (hk *Hook) AfterNewBlock(ctx context.Context, c *dynamic.Chain, block *entities.FetchedBlock) error {
+	blockLogCtx := log.WithFields(ctx, log.Field("chain", c.UUID), log.Field("block_number", block.BlockNumber))
 	logger := hk.logger.WithContext(blockLogCtx)
 
 	var txResponses []*tx.TxResponse
-	for _, job := range jobs {
+	for _, job := range block.Jobs {
 		receiptLogCtx := log.WithFields(blockLogCtx, log.Field("receipt_tx_hash", job.Receipt.TxHash))
 		// Register deployed contract
 		err := hk.registerDeployedContract(receiptLogCtx, c, job.Receipt, block)
@@ -110,13 +110,13 @@ func (hk *Hook) AfterNewBlock(ctx context.Context, c *dynamic.Chain, block *etht
 		txResponse := txResponse
 
 		updateReq := &api.UpdateJobRequest{
-			Status:  entities.StatusMined,
+			Status:  apptypes.StatusMined,
 			Message: fmt.Sprintf("transaction mined in block %v", block.NumberU64()),
 		}
 
 		if txResponse.Receipt.EffectiveGasPrice != "" {
 			effectiveGas, _ := hexutil.DecodeBig(txResponse.Receipt.EffectiveGasPrice)
-			updateReq.Transaction = &entities.ETHTransaction{
+			updateReq.Transaction = &apptypes.ETHTransaction{
 				GasPrice: (*hexutil.Big)(effectiveGas),
 			}
 		}
@@ -242,7 +242,7 @@ func GetAbi(e *ethAbi.Event) string {
 	return fmt.Sprintf("%v(%v)", e.Name, strings.Join(inputs, ","))
 }
 
-func (hk *Hook) registerDeployedContract(ctx context.Context, c *dynamic.Chain, receipt *types.Receipt, block *ethtypes.Block) error {
+func (hk *Hook) registerDeployedContract(ctx context.Context, c *dynamic.Chain, receipt *types.Receipt, block *entities.FetchedBlock) error {
 	if receipt.ContractAddress == "" || receipt.ContractAddress == "0x0000000000000000000000000000000000000000" {
 		return nil
 	}

@@ -47,6 +47,18 @@ func (ec *Client) BlockByNumber(ctx context.Context, endpoint string, number *bi
 	return ethtypes.NewBlock(header, body.Transactions, []*ethtypes.Header{}, []*ethtypes.Receipt{}, new(trie.Trie)), nil
 }
 
+func (ec *Client) TransactionsBlockByNumber(ctx context.Context, endpoint string, number *big.Int) ([]*ethcommon.Hash, error) {
+	// Perform RPC call
+	var header *ethtypes.Header
+	var body *LightBody
+	err := ec.Call(ctx, endpoint, processBlockResult(&header, &body), "eth_getBlockByNumber", toBlockNumArg(number), false)
+	if err != nil {
+		return nil, errors.FromError(err).ExtendComponent(component)
+	}
+
+	return body.Transactions, nil
+}
+
 func processHeaderResult(head **ethtypes.Header) ParseResultFunc {
 	return func(result json.RawMessage) error {
 		err := utils.ProcessResult(head)(result)

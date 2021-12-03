@@ -53,6 +53,9 @@ type ChainLedgerReader interface {
 
 	// BlockByNumber returns a block from the current canonical chain
 	BlockByNumber(ctx context.Context, url string, number *big.Int) (*ethtypes.Block, error)
+	
+	// BlockByNumber returns a block from the current canonical chain
+	TransactionsBlockByNumber(ctx context.Context, endpoint string, number *big.Int) ([]*ethcommon.Hash, error)
 
 	// HeaderByHash returns the block header with the given hash.
 	HeaderByHash(ctx context.Context, url string, hash ethcommon.Hash) (*ethtypes.Header, error)

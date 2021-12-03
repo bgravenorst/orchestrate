@@ -212,7 +212,13 @@ type Body struct {
 	UncleHashes  []ethcommon.Hash        `json:"uncles"`
 }
 
-func processBlockResult(header **ethtypes.Header, body **Body) ParseResultFunc {
+type LightBody struct {
+	Hash         ethcommon.Hash    `json:"hash"`
+	Transactions []*ethcommon.Hash `json:"transactions"`
+	UncleHashes  []ethcommon.Hash  `json:"uncles"`
+}
+
+func processBlockResult(header **ethtypes.Header, body interface{}) ParseResultFunc {
 	return func(result json.RawMessage) error {
 		var raw json.RawMessage
 		err := utils.ProcessResult(&raw)(result)

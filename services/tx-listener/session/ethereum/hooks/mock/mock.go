@@ -6,10 +6,9 @@ package mock
 
 import (
 	context "context"
-	types "github.com/ethereum/go-ethereum/core/types"
-	gomock "github.com/golang/mock/gomock"
-	entities "github.com/consensys/orchestrate/pkg/types/entities"
 	dynamic "github.com/consensys/orchestrate/services/tx-listener/dynamic"
+	entities "github.com/consensys/orchestrate/services/tx-listener/entities"
+	gomock "github.com/golang/mock/gomock"
 	reflect "reflect"
 )
 
@@ -37,15 +36,15 @@ func (m *MockHook) EXPECT() *MockHookMockRecorder {
 }
 
 // AfterNewBlock mocks base method
-func (m *MockHook) AfterNewBlock(ctx context.Context, chain *dynamic.Chain, block *types.Block, jobs []*entities.Job) error {
+func (m *MockHook) AfterNewBlock(ctx context.Context, chain *dynamic.Chain, block *entities.FetchedBlock) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AfterNewBlock", ctx, chain, block, jobs)
+	ret := m.ctrl.Call(m, "AfterNewBlock", ctx, chain, block)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AfterNewBlock indicates an expected call of AfterNewBlock
-func (mr *MockHookMockRecorder) AfterNewBlock(ctx, chain, block, jobs interface{}) *gomock.Call {
+func (mr *MockHookMockRecorder) AfterNewBlock(ctx, chain, block interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AfterNewBlock", reflect.TypeOf((*MockHook)(nil).AfterNewBlock), ctx, chain, block, jobs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AfterNewBlock", reflect.TypeOf((*MockHook)(nil).AfterNewBlock), ctx, chain, block)
 }

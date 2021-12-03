@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/consensys/orchestrate/pkg/toolkit/app/log"
-	"github.com/consensys/orchestrate/pkg/types/entities"
+	apptypes "github.com/consensys/orchestrate/pkg/types/entities"
 	"github.com/consensys/orchestrate/pkg/utils"
+	"github.com/consensys/orchestrate/services/tx-listener/entities"
 	"github.com/consensys/orchestrate/services/tx-listener/metrics"
 
 	"github.com/consensys/orchestrate/services/tx-listener/session"
@@ -95,11 +96,6 @@ func NewSessionBuilder(
 
 func (b *SessionBuilder) NewSession(chain *dynamic.Chain) (session.Session, error) {
 	return NewSession(chain, b.ec, b.client, b.hook, b.offsets, b.metrics), nil
-}
-
-type fetchedBlock struct {
-	block *ethtypes.Block
-	jobs  []*entities.Job
 }
 
 func (s *Session) Run(ctx context.Context) error {
@@ -266,14 +262,19 @@ func (s *Session) callHooks(ctx context.Context) {
 		case res := <-futureBlock.Result():
 			// We MUST drain array chan and ignore blocks after an error happened
 			if err != nil {
-				s.logger.
-					WithField("blockNumber", res.(*fetchedBlock).block.NumberU64()).
-					Warn("ignoring fetched block")
+				s.logger.WithError(err).
+					WithField("blockNumber", res.(*entities.FetchedBlock).BlockNumber).
+					Warn("fetched block")
 				continue
 			}
-			err = s.callHook(ctx, res.(*fetchedBlock))
+			err = s.callHook(ctx, res.(*entities.FetchedBlock))
 		case e := <-futureBlock.Err():
-			if err == nil && e != nil {
+			// Prevent errors to be overwritten
+			if err != nil {
+				continue
+			}
+
+			if e != nil {
 				err = e
 			}
 		}
@@ -291,81 +292,79 @@ func (s *Session) callHooks(ctx context.Context) {
 	s.logger.Debug("call hooks loop has been stopped")
 }
 
-func (s *Session) callHook(ctx context.Context, block *fetchedBlock) error {
-	err := s.hook.AfterNewBlock(ctx, s.Chain, block.block, block.jobs)
+func (s *Session) callHook(ctx context.Context, block *entities.FetchedBlock) error {
+	err := s.hook.AfterNewBlock(ctx, s.Chain, block)
 	if err != nil {
 		return err
 	}
 
-	return s.offsets.SetLastBlockNumber(ctx, s.Chain, block.block.NumberU64())
+	return s.offsets.SetLastBlockNumber(ctx, s.Chain, block.BlockNumber)
 }
 
 func (s *Session) fetchBlock(ctx context.Context, blockPosition uint64) *Future {
 	return NewFuture(func() (interface{}, error) {
-		blck, err := s.ec.BlockByNumber(
-			ctx,
-			s.Chain.URL,
-			big.NewInt(int64(blockPosition)),
-		)
+		transactions, err := s.ec.TransactionsBlockByNumber(ctx, s.Chain.URL, big.NewInt(int64(blockPosition)))
 		if err != nil {
 			errMessage := "failed to fetch block"
 			s.logger.WithError(err).WithField("block_number", blockPosition).Error(errMessage)
 			return nil, errors.ConnectionError(errMessage)
 		}
 
-		block := &fetchedBlock{block: blck}
+		block := entities.NewFetchedBlock(transactions, blockPosition)
 
-		for _, tx := range blck.Transactions() {
-			s.logger.WithField("tx_hash", tx.Hash().String()).
-				WithField("block_number", blck.NumberU64()).Debug("found transaction in block")
+		for _, tx := range transactions {
+			s.logger.WithField("tx_hash", tx.String()).
+				WithField("block_number", blockPosition).Debug("found transaction in block")
 		}
 
-		jobMap, err := s.fetchJobs(ctx, blck.Transactions())
+		jobMap, err := s.fetchJobs(ctx, transactions)
 		if err != nil {
 			return nil, err
 		}
 
 		// TODO: pass batch variable by environment variable
 		batch := 20
-		for i := 0; i < blck.Transactions().Len(); i += batch {
+		for i := 0; i < len(transactions); i += batch {
 			j := i + batch
-			if j > blck.Transactions().Len() {
-				j = blck.Transactions().Len()
+			if j > len(transactions) {
+				j = len(transactions)
 			}
-			jobs, err := awaitReceipts(s.fetchReceipts(ctx, blck.Transactions()[i:j], jobMap))
+			jobs, err := awaitReceipts(s.fetchReceipts(ctx, transactions[i:j], jobMap))
 			if err != nil {
 				return nil, err
 			}
-			block.jobs = append(block.jobs, jobs...)
+
+			block.AppendJobs(jobs)
 		}
 
 		return block, nil
 	})
 }
 
-func (s *Session) fetchJobs(ctx context.Context, transactions ethtypes.Transactions) (map[string]*entities.Job, error) {
-	jobMap := make(map[string]*entities.Job)
+func (s *Session) fetchJobs(ctx context.Context, transactions []*ethcommon.Hash) (map[string]*apptypes.Job, error) {
+	jobMap := make(map[string]*apptypes.Job)
 
 	if len(transactions) == 0 {
 		return jobMap, nil
 	}
 
-	for i := 0; i < transactions.Len(); i += MaxTxHashesLength {
+	txListSize := len(transactions)
+	for i := 0; i < txListSize; i += MaxTxHashesLength {
 		size := i + MaxTxHashesLength
-		if size > transactions.Len() {
-			size = transactions.Len()
+		if size > txListSize {
+			size = txListSize
 		}
 		currTransactions := transactions[i:size]
 		var txHashes []string
 		for _, t := range currTransactions {
-			txHashes = append(txHashes, t.Hash().String())
+			txHashes = append(txHashes, t.String())
 		}
 
 		// By design, we will receive 0 or 1 job per tx_hash in the filter because we filter by status PENDING
-		jobResponses, err := s.client.SearchJob(ctx, &entities.JobFilters{
+		jobResponses, err := s.client.SearchJob(ctx, &apptypes.JobFilters{
 			TxHashes:  txHashes,
 			ChainUUID: s.Chain.UUID,
-			Status:    entities.StatusPending,
+			Status:    apptypes.StatusPending,
 		})
 		if err != nil {
 			s.logger.WithError(err).Error("failed to search jobs")
@@ -377,7 +376,7 @@ func (s *Session) fetchJobs(ctx context.Context, transactions ethtypes.Transacti
 				WithField("job", jobResponse.UUID).Debug("transaction was matched to a job")
 
 			// Filter by the jobs belonging to same session CHAIN_UUID
-			jobMap[jobResponse.Transaction.Hash.String()] = &entities.Job{
+			jobMap[jobResponse.Transaction.Hash.String()] = &apptypes.Job{
 				UUID:         jobResponse.UUID,
 				ChainUUID:    jobResponse.ChainUUID,
 				ScheduleUUID: jobResponse.ScheduleUUID,
@@ -394,10 +393,23 @@ func (s *Session) fetchJobs(ctx context.Context, transactions ethtypes.Transacti
 	return jobMap, nil
 }
 
-func (s *Session) fetchReceipts(ctx context.Context, transactions ethtypes.Transactions, jobMap map[string]*entities.Job) []*Future {
+func (s *Session) fetchReceipts(ctx context.Context, transactions []*ethcommon.Hash, jobMap map[string]*apptypes.Job) []*Future {
 	var futureJobs []*Future
 
-	for _, blckTx := range transactions {
+	for _, tx := range transactions {
+		if !(isInternalTx(jobMap, tx) || s.Chain.Listener.ExternalTxEnabled) {
+			continue
+		}
+
+		var job *apptypes.Job
+		if isInternalTx(jobMap, tx) {
+			job = jobMap[tx.String()]
+		} else {
+			job = &apptypes.Job{ChainUUID: s.Chain.UUID, Transaction: &apptypes.ETHTransaction{Hash: utils.ToPtr(blckTx.Hash()).(*ethcommon.Hash)}}
+		}
+
+		futureJobs = append(futureJobs, s.fetchReceipt(ctx, jobMap[tx.String()], *tx))
+
 		switch {
 		case isEEAPrivTx(blckTx, s.eeaPrivPrecompiledContractAddr) && isInternalTx(jobMap, blckTx):
 			futureJobs = append(futureJobs, s.fetchPrivateReceipt(ctx, jobMap[blckTx.Hash().String()], blckTx.Hash()))
@@ -406,11 +418,11 @@ func (s *Session) fetchReceipts(ctx context.Context, transactions ethtypes.Trans
 			futureJobs = append(futureJobs, s.fetchReceipt(ctx, jobMap[blckTx.Hash().String()], blckTx.Hash()))
 			continue
 		case isEEAPrivTx(blckTx, s.eeaPrivPrecompiledContractAddr) && s.Chain.Listener.ExternalTxEnabled:
-			job := &entities.Job{ChainUUID: s.Chain.UUID, Transaction: &entities.ETHTransaction{Hash: utils.ToPtr(blckTx.Hash()).(*ethcommon.Hash)}}
+			job := &apptypes.Job{ChainUUID: s.Chain.UUID, Transaction: &apptypes.ETHTransaction{Hash: utils.ToPtr(blckTx.Hash()).(*ethcommon.Hash)}}
 			futureJobs = append(futureJobs, s.fetchPrivateReceipt(ctx, job, blckTx.Hash()))
 			continue
 		case s.Chain.Listener.ExternalTxEnabled:
-			job := &entities.Job{ChainUUID: s.Chain.UUID, Transaction: &entities.ETHTransaction{Hash: utils.ToPtr(blckTx.Hash()).(*ethcommon.Hash)}}
+
 			futureJobs = append(futureJobs, s.fetchReceipt(ctx, job, blckTx.Hash()))
 			continue
 		default:
@@ -421,7 +433,7 @@ func (s *Session) fetchReceipts(ctx context.Context, transactions ethtypes.Trans
 	return futureJobs
 }
 
-func awaitReceipts(futureJobs []*Future) (jobs []*entities.Job, err error) {
+func awaitReceipts(futureJobs []*Future) (jobs []*apptypes.Job, err error) {
 	for _, futureJob := range futureJobs {
 		select {
 		case e := <-futureJob.Err():
@@ -429,7 +441,7 @@ func awaitReceipts(futureJobs []*Future) (jobs []*entities.Job, err error) {
 				err = e
 			}
 		case res := <-futureJob.Result():
-			jobs = append(jobs, res.(*entities.Job))
+			jobs = append(jobs, res.(*apptypes.Job))
 		}
 
 		// Close future
@@ -442,8 +454,8 @@ func awaitReceipts(futureJobs []*Future) (jobs []*entities.Job, err error) {
 	return jobs, nil
 }
 
-func isInternalTx(jobMap map[string]*entities.Job, transaction *ethtypes.Transaction) bool {
-	_, ok := jobMap[transaction.Hash().String()]
+func isInternalTx(jobMap map[string]*apptypes.Job, transaction *ethcommon.Hash) bool {
+	_, ok := jobMap[transaction.String()]
 	return ok
 }
 
@@ -455,7 +467,7 @@ func isEEAPrivTx(transaction *ethtypes.Transaction, eeaPrivPrecompiledContractAd
 	return transaction.To() != nil && transaction.To().String() == eeaPrivPrecompiledContractAddr
 }
 
-func (s *Session) fetchReceipt(ctx context.Context, job *entities.Job, txHash ethcommon.Hash) *Future {
+func (s *Session) fetchReceipt(ctx context.Context, job *apptypes.Job, txHash ethcommon.Hash) *Future {
 	return NewFuture(func() (interface{}, error) {
 		logger := s.logger.WithField("tx_hash", txHash.Hex()).WithField("chain", s.Chain.UUID)
 		logger.Debug("fetching fetch receipt...")
@@ -465,7 +477,7 @@ func (s *Session) fetchReceipt(ctx context.Context, job *entities.Job, txHash et
 			logger.WithError(err).Error("failed to fetch receipt")
 			return nil, err
 		}
-
+		
 		// Attach receipt to envelope
 		job.Receipt = receipt.
 			SetBlockHash(ethcommon.HexToHash(receipt.GetBlockHash())).
@@ -476,7 +488,7 @@ func (s *Session) fetchReceipt(ctx context.Context, job *entities.Job, txHash et
 	})
 }
 
-func (s *Session) fetchPrivateReceipt(ctx context.Context, job *entities.Job, txHash ethcommon.Hash) *Future {
+func (s *Session) fetchPrivateReceipt(ctx context.Context, job *apptypes.Job, txHash ethcommon.Hash) *Future {
 	return NewFuture(func() (interface{}, error) {
 		logger := s.logger.WithField("tx_hash", txHash.Hex()).WithField("chain", s.Chain.UUID)
 

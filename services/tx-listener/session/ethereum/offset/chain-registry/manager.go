@@ -39,7 +39,7 @@ func (m *Manager) GetLastBlockNumber(ctx context.Context, chain *dynamic.Chain) 
 
 func (m *Manager) SetLastBlockNumber(ctx context.Context, chain *dynamic.Chain, blockNumber uint64) error {
 	if chain.Listener.CurrentBlock == blockNumber {
-		log.FromContext(ctx).WithField("block_number", blockNumber).Warn("ignored set last block number")
+		log.FromContext(ctx).WithField("block_number", blockNumber).Warn("set to last block number is ignored")
 		return nil
 	}
 
