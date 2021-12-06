@@ -116,6 +116,12 @@ func importFromFile(apiDB *pg.DB, tableName string) error {
 		return err
 	}
 
+	// Sync the auto-increment primary key
+	_, err = apiDB.Exec(fmt.Sprintf("SELECT setval('%s_id_seq', COALESCE((SELECT MAX(id)+1 FROM %s), 1), false)", tableName, tableName))
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
