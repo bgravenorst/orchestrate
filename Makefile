@@ -4,7 +4,7 @@ INTEGRATION_TEST_PACKAGES ?= $(shell go list ./... | grep integration-tests )
 ORCH_SERVICES = tx-sender tx-listener api key-manager
 ORCH_MIGRATE = api key-manager
 DEPS_VAULT = vault vault-init vault-agent
-DEPS_POSTGRES = postgres-api postgres-old
+DEPS_POSTGRES = postgres-api
 DEPS_KAFKA = zookeeper kafka
 
 UNAME_S := $(shell uname -s)
