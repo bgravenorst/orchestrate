@@ -33,6 +33,7 @@ func NewContractsController(contractUCs usecases.ContractUseCases) *ContractsCon
 func (c *ContractsController) Append(router *mux.Router) {
 	router.Methods(http.MethodGet).Path("/contracts").HandlerFunc(c.getCatalog)
 	router.Methods(http.MethodPost).Path("/contracts").HandlerFunc(c.register)
+	router.Methods(http.MethodGet).Path("/contracts/search").HandlerFunc(c.search)
 	router.Methods(http.MethodPost).Path("/contracts/accounts/{chain_id}/{address}").HandlerFunc(c.setCodeHash)
 	router.Methods(http.MethodGet).Path("/contracts/accounts/{chain_id}/{address}/events").HandlerFunc(c.getEvents)
 	router.Methods(http.MethodGet).Path("/contracts/{name}").HandlerFunc(c.getTags)
@@ -103,6 +104,39 @@ func (c *ContractsController) register(rw http.ResponseWriter, request *http.Req
 	}
 
 	contract, err = c.ucs.GetContract().Execute(ctx, contract.Name, contract.Tag)
+	if err != nil {
+		httputil.WriteHTTPErrorResponse(rw, err)
+		return
+	}
+
+	_ = json.NewEncoder(rw).Encode(formatters.FormatContractResponse(contract))
+}
+
+// @Summary Search contract
+// @Description Search contract by codeHash or signHash
+// @Tags Contracts
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Security JWTAuth
+// @Param request body api.RegisterContractRequest true "Contract register request"
+// @Success 200 {object} api.ContractResponse{constructor=entities.Method,methods=[]entities.Method,events=[]entities.Event} "Contract object"
+// @Failure 400 {object} httputil.ErrorResponse "Invalid request"
+// @Failure 401 {object} httputil.ErrorResponse "Unauthorized"
+// @Failure 500 {object} httputil.ErrorResponse "Internal server error"
+// @Router /contracts [get]
+func (c *ContractsController) search(rw http.ResponseWriter, request *http.Request) {
+	rw.Header().Set("Content-Type", "application/json")
+	ctx := request.Context()
+
+	req := &api.SearchContractRequest{}
+	err := jsonutils.UnmarshalBody(request.Body, req)
+	if err != nil {
+		httputil.WriteError(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	contract, err := c.ucs.SearchContract().Execute(ctx, req.CodeHash, req.SigHash)
 	if err != nil {
 		httputil.WriteHTTPErrorResponse(rw, err)
 		return

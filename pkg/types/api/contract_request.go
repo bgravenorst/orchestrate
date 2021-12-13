@@ -38,3 +38,8 @@ type GetContractEventsBySignHashResponse struct {
 type SetContractCodeHashRequest struct {
 	CodeHash hexutil.Bytes `json:"code_hash" validate:"required" example:"0x6080604052348015600f57600080f" swaggertype:"string"`
 }
+
+type SearchContractRequest struct {
+	CodeHash hexutil.Bytes `json:"code_hash" validate:"required" example:"0x6080604052348015600f57600080f" swaggertype:"string"`
+	SigHash  hexutil.Bytes `json:"sign_hash" validate:"required" example:"0x6080604052348015600f57600080f" swaggertype:"string"`
+}

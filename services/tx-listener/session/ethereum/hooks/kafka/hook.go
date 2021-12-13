@@ -164,12 +164,13 @@ func (hk *Hook) decodeReceipt(ctx context.Context, c *dynamic.Chain, receipt *ty
 			WithField("address", l.GetAddress()).WithField("indexed", uint32(len(l.Topics)-1))
 
 		logger.Debug("decoding receipt logs")
+		signHash := hexutil.MustDecode(l.Topics[0])
 		eventResp, err := hk.client.GetContractEvents(
 			ctx,
 			l.GetAddress(),
 			c.ChainID,
 			&api.GetContractEventsRequest{
-				SigHash:           hexutil.MustDecode(l.Topics[0]),
+				SigHash:           signHash,
 				IndexedInputCount: uint32(len(l.Topics) - 1),
 			},
 		)
@@ -223,6 +224,23 @@ func (hk *Hook) decodeReceipt(ctx context.Context, c *dynamic.Chain, receipt *ty
 			logger.WithError(err).Tracef("could not unmarshal potential event ABI, txHash: %s sigHash: %s, ", l.GetTxHash(), l.GetTopics()[0])
 			continue
 		}
+		
+		if receipt.ContractName == "" {
+			eventContract, err := hk.client.SearchContract(ctx, &api.SearchContractRequest{
+				SigHash: signHash,
+			})
+			if err != nil {
+				if errors.IsNotFoundError(err) {
+					continue
+				}
+
+				logger.WithError(err).Error("failed to search contract by sign hash")
+				return err
+			}
+
+			receipt.ContractName = eventContract.Name
+			receipt.ContractTag = eventContract.Tag
+		}
 
 		// Set decoded data on log
 		l.DecodedData = mapping
@@ -262,14 +280,16 @@ func (hk *Hook) registerDeployedContract(ctx context.Context, c *dynamic.Chain, 
 		return err
 	}
 
-	err = hk.client.SetContractAddressCodeHash(ctx, receipt.ContractAddress, c.ChainID,
-		&api.SetContractCodeHashRequest{
-			CodeHash: crypto.Keccak256Hash(code).Bytes(),
-		})
+	contract, err := hk.client.SearchContract(ctx, &api.SearchContractRequest{
+		CodeHash: crypto.Keccak256Hash(code).Bytes(),
+	})
 	if err != nil {
 		logger.WithError(err).Error("failed to register contract")
 		return err
 	}
+
+	receipt.ContractName = contract.Name
+	receipt.ContractTag = contract.Tag
 
 	logger.Info("contract has been registered successfully")
 	return nil

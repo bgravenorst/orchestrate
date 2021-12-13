@@ -1,6 +1,14 @@
 # Orchestrate Release Notes
 
-## v21.10.0 alpha.4 (WIP)
+## v21.11.0 alpha.2 (WIP)
+### 🆕 Features
+- Attach contract name and tag into transaction receipts when bytecode matches to one of the registered contracts. 
+
+## v21.11.0 alpha.1 (2021-12-03)
+### 🛠 Bug fixes
+- Fail to deploy contract with arguments in the constructor
+
+## v21.10.0 alpha.4 (2021-12-03)
 ### ⚠ BREAKING CHANGES
 * `Orion` was removed in favor of `EEA` as *PrivateTxManager* in chain APIs
 * Following ETH transaction properties types has been BigInt updated:

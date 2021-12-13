@@ -77,6 +77,22 @@ func (c *HTTPClient) GetContractTags(ctx context.Context, name string) ([]string
 	return resp, err
 }
 
+func (c *HTTPClient) SearchContract(ctx context.Context, req *types.SearchContractRequest) (*types.ContractResponse, error) {
+	reqURL := fmt.Sprintf("%v/contracts/search", c.config.URL)
+	resp := &types.ContractResponse{}
+	err := callWithBackOff(ctx, c.config.backOff, func() error {
+		response, err := clientutils.PostRequest(ctx, c.client, reqURL, req)
+		if err != nil {
+			return err
+		}
+
+		defer clientutils.CloseResponse(response)
+		return httputil.ParseResponse(ctx, response, resp)
+	})
+
+	return resp, err
+}
+
 func (c *HTTPClient) DeregisterContract(_ context.Context, _, _ string) error {
 	panic("method DeregisterContract is not implemented")
 }
