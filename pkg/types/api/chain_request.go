@@ -7,8 +7,8 @@ import (
 type RegisterChainRequest struct {
 	Name             string                   `json:"name" validate:"required" example:"mainnet"` // Name of the chain. Must be unique.
 	URLs             []string                 `json:"urls" pg:"urls,array" validate:"required,min=1,unique,dive,url" example:"https://mainnet.infura.io/v3/a73136601e6f4924a0baa4ed880b535e"` // List of URLs of Ethereum nodes to connect to.
-	Listener         RegisterListenerRequest  `json:"listener,omitempty"` // Transaction Listener server configuration.
-	PrivateTxManager *PrivateTxManagerRequest `json:"privateTxManager,omitempty"` // Private transaction manager used for private transactions.
+	Listener         RegisterListenerRequest  `json:"listener,omitempty"`
+	PrivateTxManager *PrivateTxManagerRequest `json:"privateTxManager,omitempty"`
 	Labels           map[string]string        `json:"labels,omitempty"` // List of custom labels. Useful for adding custom information to the chain.
 }
 
@@ -35,5 +35,5 @@ type UpdateListenerRequest struct {
 
 type PrivateTxManagerRequest struct {
 	URL  string                        `json:"url" validate:"required,url" example:"http://tessera:3000"` // Transaction manager endpoint.
-	Type entities.PrivateTxManagerType `json:"type" validate:"required,isPrivateTxManagerType" example:"Tessera"` // Currently only supports `Tessera`.
+	Type entities.PrivateTxManagerType `json:"type" validate:"required,isPrivateTxManagerType" example:"Tessera"` // Currently supports `Tessera` and `EEA``.
 }

@@ -19,6 +19,6 @@ type PrivateTxManager struct {
 	UUID      string // UUID of the private transaction manager.
 	ChainUUID string // UUID of the registered chain.
 	URL       string // Transaction manager endpoint.
-	Type      PrivateTxManagerType // Currently only supports `Tessera`.
+	Type      PrivateTxManagerType // Currently supports `Tessera` and `EEA`.
 	CreatedAt time.Time // Date and time that the private transaction manager was registered with the chain.
 }
