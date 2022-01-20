@@ -1,5 +1,10 @@
 # Orchestrate Release Notes
 
+## v21.12.2 (Unreleased)
+### 🛠 Bug fixes
+* Fixed Chain Proxy issues caused by additional header being added to forwarded request.  
+* Fixed wrong error code returned importing duplicate accounts
+
 ## v21.12.1 (2022-01-13)
 ### 🆕 Features
 * Compatibility with all versions of Solidity <= 0.8.11.
@@ -53,6 +58,14 @@
 ### 🛠 Bug fixes
 * Removed `warning` log removed when the events of the receipt are not found in the contract registry
 * Fix contract deployment bug where arguments of the constructor are not parsed correctly
+
+## v21.1.15 (2022-01-19)
+### 🛠 Bug fixes
+* Fixed Chain Proxy issues caused by additional header being added to forwarded request.
+
+## v21.1.14 (2021-12-20)
+### 🛠 Bug fixes
+* Fix sequence of primary key when a DB copy is performed using the `copy-db` command
 
 ## v21.1.13 (2021-12-14)
 ### 🛠 Bug fixes
